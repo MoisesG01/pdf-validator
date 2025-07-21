@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.pyc
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Ambientes virtuais
+venv/
+.env/
+.venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Arquivos temporários do sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Arquivos de log e temporários
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Relatórios e arquivos de usuário
+*.txt~
+*.sublime-workspace
+*.sublime-project
+
+# Relatórios salvos pelo app
+*.pdf
+*.txt 
