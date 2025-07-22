@@ -192,7 +192,6 @@ class PDFValidator:
         self.info_text.delete(1.0, tk.END)
         self.validation_results_text.delete(1.0, tk.END)
         self.content_text.delete(1.0, tk.END)
-        self.report_text.delete(1.0, tk.END)
         
     def validate_pdf(self):
         if not self.current_pdf_path:
@@ -350,6 +349,7 @@ class PDFValidator:
             'total_tests': 0,
             'expected_tests': 0,
             'all_tests_present': True,
+            'not_performed_tests': []  # <-- NOVO
         }
         # 1. Testes OK/NOK
         test_blocks = re.findall(r'(Teste (\d+) de (\d+)[\s\S]+?)(?=Teste \d+ de \d+|$)', pdf_text)
@@ -367,6 +367,9 @@ class PDFValidator:
                 for param in nok_match:
                     results['all_tests_ok'] = False
                     results['failed_tests'].append(f"{test_id}: {param.strip()}")
+            # NOVO: Verifica se o teste não foi realizado
+            if 'Teste não realizado' in block:
+                results['not_performed_tests'].append(test_id)
             # Verifica se é teste de alarme e se tem 'Teste OK!!' ou 'NOK' (case-insensitive)
             if 'OBS:' in block:
                 obs_block = block.split('OBS:')[1] if 'OBS:' in block else ''
@@ -484,7 +487,7 @@ class PDFValidator:
         self.report_scrollable_frame.grid_columnconfigure(0, weight=1)
         # Status geral
         if adv:
-            if adv['all_tests_present'] and adv['all_tests_ok'] and not adv['missing_alarm_ok']:
+            if adv['all_tests_present'] and adv['all_tests_ok'] and not adv['missing_alarm_ok'] and not adv['not_performed_tests']:
                 status_color = '#28a745'
                 status_text = 'APROVADO!'
                 status_icon = '✅'
@@ -496,6 +499,8 @@ class PDFValidator:
                 status_msg = ''
                 if not adv['all_tests_present']:
                     status_msg += f'Nem todos os testes foram realizados! ({adv["total_tests"]} de {adv["expected_tests"]})\n'
+                if adv.get('not_performed_tests'):
+                    status_msg += 'Testes não realizados:\n  - ' + '\n  - '.join(adv['not_performed_tests']) + '\n'
                 if not adv['all_tests_ok']:
                     status_msg += 'Testes reprovados:\n  - ' + '\n  - '.join(adv['failed_tests']) + '\n'
         else:
