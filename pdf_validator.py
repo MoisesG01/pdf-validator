@@ -5,6 +5,7 @@ import os
 import json
 from datetime import datetime
 import threading
+import re
 
 class PDFValidator:
     def __init__(self, root):
@@ -22,7 +23,7 @@ class PDFValidator:
         
     def setup_ui(self):
         # Frame principal
-        main_frame = ttk.Frame(self.root, padding="10")
+        main_frame = ttk.Frame(self.root, padding="20")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Configurar grid
@@ -30,161 +31,147 @@ class PDFValidator:
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
         
-        # Título
-        title_label = ttk.Label(main_frame, text="🔍 Validador de PDF", 
-                               font=('Arial', 16, 'bold'))
-        title_label.grid(row=0, column=0, columnspan=3, pady=(0, 20))
+        # Título com ícone
+        title_label = ttk.Label(main_frame, text="🧪 Validador de Testes", 
+                               font=('Segoe UI', 20, 'bold'), foreground='#2d3a4a')
+        title_label.grid(row=0, column=0, columnspan=3, pady=(0, 30))
         
         # Botão para selecionar PDF
-        self.select_btn = ttk.Button(main_frame, text="Selecionar PDF", 
-                                    command=self.select_pdf)
-        self.select_btn.grid(row=1, column=0, sticky=tk.W, pady=(0, 10))
+        self.select_btn = ttk.Button(main_frame, text="📂 Selecionar PDF", 
+                                    command=self.select_pdf, style='Accent.TButton')
+        self.select_btn.grid(row=1, column=0, sticky=tk.W, pady=(0, 10), ipadx=10, ipady=5)
         
         # Label para mostrar arquivo selecionado
         self.file_label = ttk.Label(main_frame, text="Nenhum arquivo selecionado", 
-                                   foreground='gray')
+                                   foreground='#888', font=('Segoe UI', 11))
         self.file_label.grid(row=1, column=1, sticky=tk.W, padx=(10, 0), pady=(0, 10))
         
         # Botão para validar
-        self.validate_btn = ttk.Button(main_frame, text="Validar PDF", 
-                                      command=self.validate_pdf, state='disabled')
-        self.validate_btn.grid(row=1, column=2, sticky=tk.E, pady=(0, 10))
+        self.validate_btn = ttk.Button(main_frame, text="✅ Validar Testes", 
+                                      command=self.validate_pdf, state='disabled', style='Success.TButton')
+        self.validate_btn.grid(row=1, column=2, sticky=tk.E, pady=(0, 10), ipadx=10, ipady=5)
         
         # Barra de progresso
         self.progress_var = tk.StringVar()
         self.progress_var.set("")
-        self.progress_label = ttk.Label(main_frame, textvariable=self.progress_var)
+        self.progress_label = ttk.Label(main_frame, textvariable=self.progress_var, font=('Segoe UI', 10))
         self.progress_label.grid(row=2, column=0, columnspan=3, pady=(0, 5))
         
-        self.progress_bar = ttk.Progressbar(main_frame, mode='indeterminate')
+        self.progress_bar = ttk.Progressbar(main_frame, mode='indeterminate', style='blue.Horizontal.TProgressbar')
         self.progress_bar.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
         
         # Notebook para abas
-        self.notebook = ttk.Notebook(main_frame)
+        self.notebook = ttk.Notebook(main_frame, style='Modern.TNotebook')
         self.notebook.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(10, 0))
         
         # Aba de informações básicas
-        self.info_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.info_frame, text="Informações Básicas")
+        self.info_frame = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(self.info_frame, text="ℹ️ Informações")
         
         # Aba de validação
-        self.validation_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.validation_frame, text="Validação")
+        self.validation_frame = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(self.validation_frame, text="🔎 Validação")
         
         # Aba de conteúdo
-        self.content_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.content_frame, text="Conteúdo")
+        self.content_frame = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(self.content_frame, text="📄 Conteúdo")
         
         # Aba de relatório
-        self.report_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.report_frame, text="Relatório")
+        self.report_frame = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(self.report_frame, text="📊 Relatório")
         
         self.setup_info_tab()
         self.setup_validation_tab()
         self.setup_content_tab()
         self.setup_report_tab()
         
-        # Barra de status
+        # Barra de status (remover campo de PDF válido)
         self.status_var = tk.StringVar()
-        self.status_var.set("Pronto para validar")
+        self.status_var.set("")
         self.status_bar = ttk.Label(main_frame, textvariable=self.status_var, 
-                                   relief=tk.SUNKEN, anchor=tk.W)
-        self.status_bar.grid(row=5, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 0))
+                                   relief=tk.SUNKEN, anchor=tk.W, font=('Segoe UI', 10), background='#e9ecef')
+        self.status_bar.grid(row=5, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(20, 0))
+        
+        # Estilos customizados
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure('Accent.TButton', font=('Segoe UI', 12, 'bold'), foreground='white', background='#0078d7')
+        style.map('Accent.TButton', background=[('active', '#005fa3')])
+        style.configure('Success.TButton', font=('Segoe UI', 12, 'bold'), foreground='white', background='#28a745')
+        style.map('Success.TButton', background=[('active', '#218838')])
+        style.configure('blue.Horizontal.TProgressbar', troughcolor='#e9ecef', background='#0078d7', thickness=8)
+        style.configure('Modern.TNotebook.Tab', font=('Segoe UI', 12, 'bold'), padding=[10, 5])
+        style.configure('TNotebook', tabposition='n')
+        style.configure('TFrame', background='#f8fafc')
+        style.configure('TLabel', background='#f8fafc')
+        style.configure('TNotebook.Tab', background='#e9ecef', foreground='#2d3a4a')
+        style.map('TNotebook.Tab', background=[('selected', '#0078d7')], foreground=[('selected', 'white')])
         
     def setup_info_tab(self):
-        # Frame com scroll
-        canvas = tk.Canvas(self.info_frame)
-        scrollbar = ttk.Scrollbar(self.info_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
+        # Frame com scroll moderno
+        self.info_canvas = tk.Canvas(self.info_frame, highlightthickness=0, bg='#f8fafc')
+        self.info_scrollbar = ttk.Scrollbar(self.info_frame, orient="vertical", command=self.info_canvas.yview)
+        self.info_scrollable_frame = ttk.Frame(self.info_canvas, padding=0)
+        self.info_scrollable_frame.bind(
             "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            lambda e: self.info_canvas.configure(scrollregion=self.info_canvas.bbox("all"))
         )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Informações do PDF
-        self.info_text = scrolledtext.ScrolledText(scrollable_frame, height=20, width=80)
+        self.info_canvas.create_window((0, 0), window=self.info_scrollable_frame, anchor="nw")
+        self.info_canvas.configure(yscrollcommand=self.info_scrollbar.set)
+        self.info_canvas.pack(side="left", fill="both", expand=True)
+        self.info_scrollbar.pack(side="right", fill="y")
+        # Área de texto
+        self.info_text = tk.Text(self.info_scrollable_frame, height=20, width=80, font=('Segoe UI', 12), bg='#f8fafc', relief=tk.FLAT, wrap=tk.WORD)
         self.info_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        self.info_text.config(state=tk.DISABLED)
         
     def setup_validation_tab(self):
-        # Frame para resultados de validação
-        self.validation_canvas = tk.Canvas(self.validation_frame)
-        self.validation_scrollbar = ttk.Scrollbar(self.validation_frame, orient="vertical", 
-                                                 command=self.validation_canvas.yview)
-        self.validation_scrollable_frame = ttk.Frame(self.validation_canvas)
-        
+        self.validation_canvas = tk.Canvas(self.validation_frame, highlightthickness=0, bg='#f8fafc')
+        self.validation_scrollbar = ttk.Scrollbar(self.validation_frame, orient="vertical", command=self.validation_canvas.yview)
+        self.validation_scrollable_frame = ttk.Frame(self.validation_canvas, padding=0)
         self.validation_scrollable_frame.bind(
             "<Configure>",
             lambda e: self.validation_canvas.configure(scrollregion=self.validation_canvas.bbox("all"))
         )
-        
         self.validation_canvas.create_window((0, 0), window=self.validation_scrollable_frame, anchor="nw")
         self.validation_canvas.configure(yscrollcommand=self.validation_scrollbar.set)
-        
-        # Área para mostrar resultados
-        self.validation_results_text = scrolledtext.ScrolledText(self.validation_scrollable_frame, 
-                                                                height=20, width=80)
-        self.validation_results_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
         self.validation_canvas.pack(side="left", fill="both", expand=True)
         self.validation_scrollbar.pack(side="right", fill="y")
+        self.validation_results_text = tk.Text(self.validation_scrollable_frame, height=20, width=80, font=('Segoe UI', 12), bg='#f8fafc', relief=tk.FLAT, wrap=tk.WORD)
+        self.validation_results_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.validation_results_text.config(state=tk.DISABLED)
         
     def setup_content_tab(self):
-        # Frame para conteúdo do PDF
-        self.content_canvas = tk.Canvas(self.content_frame)
-        self.content_scrollbar = ttk.Scrollbar(self.content_frame, orient="vertical", 
-                                              command=self.content_canvas.yview)
-        self.content_scrollable_frame = ttk.Frame(self.content_canvas)
-        
+        self.content_canvas = tk.Canvas(self.content_frame, highlightthickness=0, bg='#f8fafc')
+        self.content_scrollbar = ttk.Scrollbar(self.content_frame, orient="vertical", command=self.content_canvas.yview)
+        self.content_scrollable_frame = ttk.Frame(self.content_canvas, padding=0)
         self.content_scrollable_frame.bind(
             "<Configure>",
             lambda e: self.content_canvas.configure(scrollregion=self.content_canvas.bbox("all"))
         )
-        
         self.content_canvas.create_window((0, 0), window=self.content_scrollable_frame, anchor="nw")
         self.content_canvas.configure(yscrollcommand=self.content_scrollbar.set)
-        
-        # Área para mostrar conteúdo
-        self.content_text = scrolledtext.ScrolledText(self.content_scrollable_frame, 
-                                                     height=20, width=80)
-        self.content_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
         self.content_canvas.pack(side="left", fill="both", expand=True)
         self.content_scrollbar.pack(side="right", fill="y")
+        self.content_text = tk.Text(self.content_scrollable_frame, height=20, width=80, font=('Segoe UI', 12), bg='#f8fafc', relief=tk.FLAT, wrap=tk.WORD)
+        self.content_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.content_text.config(state=tk.DISABLED)
         
     def setup_report_tab(self):
-        # Frame para relatório
-        self.report_canvas = tk.Canvas(self.report_frame)
-        self.report_scrollbar = ttk.Scrollbar(self.report_frame, orient="vertical", 
-                                             command=self.report_canvas.yview)
-        self.report_scrollable_frame = ttk.Frame(self.report_canvas)
-        
+        # Frame para relatório com scrollbar vertical automática
+        self.report_canvas = tk.Canvas(self.report_frame, highlightthickness=0, bg='#f8fafc')
+        self.report_scrollbar = ttk.Scrollbar(self.report_frame, orient="vertical", command=self.report_canvas.yview)
+        self.report_scrollable_frame = ttk.Frame(self.report_canvas, padding=0)
         self.report_scrollable_frame.bind(
             "<Configure>",
             lambda e: self.report_canvas.configure(scrollregion=self.report_canvas.bbox("all"))
         )
-        
         self.report_canvas.create_window((0, 0), window=self.report_scrollable_frame, anchor="nw")
         self.report_canvas.configure(yscrollcommand=self.report_scrollbar.set)
-        
-        # Área para relatório
-        self.report_text = scrolledtext.ScrolledText(self.report_scrollable_frame, 
-                                                    height=20, width=80)
-        self.report_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Botão para salvar relatório
-        self.save_report_btn = ttk.Button(self.report_scrollable_frame, text="Salvar Relatório", 
-                                         command=self.save_report)
-        self.save_report_btn.pack(pady=(0, 10))
-        
         self.report_canvas.pack(side="left", fill="both", expand=True)
         self.report_scrollbar.pack(side="right", fill="y")
+        self.report_scrollable_frame.grid_columnconfigure(0, weight=1)
+        self.report_scrollable_frame.grid_rowconfigure(0, weight=1)
         
     def select_pdf(self):
         file_path = filedialog.askopenfilename(
@@ -257,6 +244,10 @@ class PDFValidator:
                 
                 # Extrair conteúdo
                 content = self.extract_content(pdf_reader)
+                # Extrair texto completo para validações avançadas
+                full_text = "\n".join(content)
+                adv_results = self.perform_advanced_validations(full_text, os.path.basename(self.current_pdf_path))
+                self.advanced_results = adv_results
                 
                 # Atualizar UI na thread principal
                 self.root.after(0, self.update_ui_with_results, content)
@@ -347,138 +338,199 @@ class PDFValidator:
                 
         return content
         
+    def perform_advanced_validations(self, pdf_text, filename):
+        results = {
+            'all_tests_ok': True,
+            'failed_tests': [],
+            'missing_alarm_ok': [],
+            'serial_match': True,
+            'serial_info': '',
+            'calibration_valid': True,
+            'calibration_info': '',
+            'total_tests': 0,
+            'expected_tests': 0,
+            'all_tests_present': True,
+        }
+        # 1. Testes OK/NOK
+        test_blocks = re.findall(r'(Teste (\d+) de (\d+)[\s\S]+?)(?=Teste \d+ de \d+|$)', pdf_text)
+        test_numbers = set()
+        expected_tests = 0
+        for block, test_num, test_total in test_blocks:
+            test_id = f"{test_num} de {test_total}"
+            test_numbers.add(int(test_num))
+            expected_tests = int(test_total)
+            # Verifica parâmetros NOK
+            for line in block.splitlines():
+                if re.search(r'OK/NOK', line):
+                    continue
+                nok_match = re.findall(r'([\w\s]+)\s+[^\n]*NOK', line, re.IGNORECASE)
+                for param in nok_match:
+                    results['all_tests_ok'] = False
+                    results['failed_tests'].append(f"{test_id}: {param.strip()}")
+            # Verifica se é teste de alarme e se tem 'Teste OK!!' ou 'NOK' (case-insensitive)
+            if 'OBS:' in block:
+                obs_block = block.split('OBS:')[1] if 'OBS:' in block else ''
+                if (re.search(r'verificar ocorrência|alarme', obs_block, re.IGNORECASE)
+                    and not re.search(r'Teste\s*OK!!', obs_block, re.IGNORECASE)
+                    and not re.search(r'NOK', obs_block, re.IGNORECASE)):
+                    results['missing_alarm_ok'].append(test_id)
+        results['total_tests'] = len(test_numbers)
+        results['expected_tests'] = expected_tests
+        results['all_tests_present'] = (len(test_numbers) == expected_tests)
+        # 2. Número de série
+        serial_in_file = ''
+        serial_in_pdf = ''
+        m = re.search(r'NS(\d+)', filename)
+        if m:
+            serial_in_file = m.group(1).lstrip('0')
+        m2 = re.search(r'Equipamento Testado Nome\s*:\s*.*\nNr\. Serie\s*:\s*(\d+)', pdf_text)
+        if m2:
+            serial_in_pdf = m2.group(1).lstrip('0')
+        results['serial_info'] = f"No arquivo: {serial_in_file} | No PDF: {serial_in_pdf}"
+        if serial_in_file and serial_in_pdf and serial_in_file != serial_in_pdf:
+            results['serial_match'] = False
+        # 3. Data de calibração
+        calib_match = re.search(r'Data Calibra[çc][aã]o\s*:\s*(\d{2}/\d{2}/\d{4})', pdf_text)
+        from datetime import datetime
+        calib_ok = True
+        calib_info = ''
+        if calib_match:
+            calib_str = calib_match.group(1)
+            try:
+                calib_date = datetime.strptime(calib_str, '%d/%m/%Y')
+                now = datetime.now()
+                if calib_date <= now:
+                    calib_ok = False
+                calib_info = f"Data calibração: {calib_str} (Válida: {'Sim' if calib_ok else 'Não'})"
+            except Exception as e:
+                calib_ok = False
+                calib_info = f"Data calibração inválida: {calib_str}"
+        else:
+            calib_ok = False
+            calib_info = "Data calibração não encontrada"
+        results['calibration_valid'] = calib_ok
+        results['calibration_info'] = calib_info
+        return results
+        
     def update_ui_with_results(self, content):
         # Parar barra de progresso
         self.progress_bar.stop()
         self.progress_var.set("")
         
-        # Atualizar aba de informações
+        # Atualizar abas
         self.update_info_tab()
-        
-        # Atualizar aba de validação
         self.update_validation_tab()
-        
-        # Atualizar aba de conteúdo
         self.update_content_tab(content)
-        
-        # Atualizar aba de relatório
         self.update_report_tab()
         
-        # Atualizar status
-        status = "✅ PDF válido" if self.validation_results['is_valid'] else "❌ PDF inválido"
-        self.status_var.set(status)
+        # Não mostrar mais status de PDF válido/invalidado
+        self.status_var.set("")
         self.validate_btn.config(state='normal')
         
     def update_info_tab(self):
-        info_text = f"""INFORMAÇÕES DO PDF
-{'='*50}
-
-Nome do arquivo: {self.pdf_info['filename']}
-Tamanho: {self.pdf_info['file_size']:,} bytes ({self.pdf_info['file_size']/1024/1024:.2f} MB)
-Número de páginas: {self.pdf_info['pages']}
-Criptografado: {'Sim' if self.pdf_info['is_encrypted'] else 'Não'}
-Data de análise: {self.pdf_info['creation_date']}
-
-METADADOS:
-{'='*20}"""
-
+        info_text = f"""INFORMAÇÕES DO PDF\n{'='*50}\n\nNome do arquivo: {self.pdf_info['filename']}\nTamanho: {self.pdf_info['file_size']:,} bytes ({self.pdf_info['file_size']/1024/1024:.2f} MB)\nNúmero de páginas: {self.pdf_info['pages']}\nCriptografado: {'Sim' if self.pdf_info['is_encrypted'] else 'Não'}\nData de análise: {self.pdf_info['creation_date']}\n\nMETADADOS:\n{'='*20}"""
         if self.pdf_info['metadata']:
             for key, value in self.pdf_info['metadata'].items():
                 if value:
                     info_text += f"\n{key}: {value}"
         else:
             info_text += "\nNenhum metadado encontrado"
-            
+        self.info_text.config(state=tk.NORMAL)
         self.info_text.delete(1.0, tk.END)
         self.info_text.insert(1.0, info_text)
+        self.info_text.config(state=tk.DISABLED)
         
     def update_validation_tab(self):
-        validation_text = f"""RESULTADOS DA VALIDAÇÃO
-{'='*40}
-
-Status: {'✅ VÁLIDO' if self.validation_results['is_valid'] else '❌ INVÁLIDO'}
-
-ERROS ENCONTRADOS:
-{'='*20}"""
-        
+        validation_text = f"""RESULTADOS DA VALIDAÇÃO\n{'='*40}\n\nStatus: {'✅ VÁLIDO' if self.validation_results['is_valid'] else '❌ INVÁLIDO'}\n\nERROS ENCONTRADOS:\n{'='*20}"""
         if self.validation_results['errors']:
             for error in self.validation_results['errors']:
                 validation_text += f"\n❌ {error}"
         else:
             validation_text += "\nNenhum erro encontrado"
-            
-        validation_text += f"""
-
-AVISOS:
-{'='*10}"""
-        
+        validation_text += f"\n\nAVISOS:\n{'='*10}"
         if self.validation_results['warnings']:
             for warning in self.validation_results['warnings']:
                 validation_text += f"\n⚠️ {warning}"
         else:
             validation_text += "\nNenhum aviso"
-            
-        validation_text += f"""
-
-ESTATÍSTICAS:
-{'='*15}"""
-        
+        validation_text += f"\n\nESTATÍSTICAS:\n{'='*15}"
         for key, value in self.validation_results['checks'].items():
             validation_text += f"\n{key.replace('_', ' ').title()}: {value}"
-            
+        self.validation_results_text.config(state=tk.NORMAL)
         self.validation_results_text.delete(1.0, tk.END)
         self.validation_results_text.insert(1.0, validation_text)
+        self.validation_results_text.config(state=tk.DISABLED)
         
     def update_content_tab(self, content):
         content_text = "CONTEÚDO DO PDF\n" + "="*20 + "\n\n"
-        
         if content:
             content_text += "\n".join(content)
         else:
             content_text += "Nenhum conteúdo pode ser extraído."
-            
+        self.content_text.config(state=tk.NORMAL)
         self.content_text.delete(1.0, tk.END)
         self.content_text.insert(1.0, content_text)
+        self.content_text.config(state=tk.DISABLED)
         
     def update_report_tab(self):
-        report_text = f"""RELATÓRIO DE VALIDAÇÃO
-{'='*30}
-
-Data/Hora: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-Arquivo: {self.pdf_info['filename']}
-
-RESUMO EXECUTIVO:
-{'='*20}
-Status: {'VÁLIDO' if self.validation_results['is_valid'] else 'INVÁLIDO'}
-Total de páginas: {self.pdf_info['pages']}
-Páginas legíveis: {self.validation_results['checks'].get('readable_pages', 0)}
-Tamanho do arquivo: {self.pdf_info['file_size']/1024/1024:.2f} MB
-
-DETALHES TÉCNICOS:
-{'='*20}"""
-
-        for key, value in self.pdf_info.items():
-            if key != 'metadata':
-                report_text += f"\n{key.replace('_', ' ').title()}: {value}"
-                
-        report_text += f"""
-
-PROBLEMAS IDENTIFICADOS:
-{'='*25}"""
-
-        if self.validation_results['errors']:
-            for error in self.validation_results['errors']:
-                report_text += f"\nERRO: {error}"
-                
-        if self.validation_results['warnings']:
-            for warning in self.validation_results['warnings']:
-                report_text += f"\nAVISO: {warning}"
-                
-        if not self.validation_results['errors'] and not self.validation_results['warnings']:
-            report_text += "\nNenhum problema identificado."
-            
-        self.report_text.delete(1.0, tk.END)
-        self.report_text.insert(1.0, report_text)
+        # Limpar frame
+        for widget in self.report_scrollable_frame.winfo_children():
+            widget.destroy()
+        adv = getattr(self, 'advanced_results', None)
+        # Painel principal centralizado e expandido
+        panel = ttk.Frame(self.report_scrollable_frame, padding=30)
+        panel.grid(row=0, column=0, sticky="nsew", pady=30)
+        self.report_scrollable_frame.grid_rowconfigure(0, weight=1)
+        self.report_scrollable_frame.grid_columnconfigure(0, weight=1)
+        # Status geral
+        if adv:
+            if adv['all_tests_present'] and adv['all_tests_ok'] and not adv['missing_alarm_ok']:
+                status_color = '#28a745'
+                status_text = 'APROVADO!'
+                status_icon = '✅'
+                status_msg = f'Todos os {adv["expected_tests"]} testes foram realizados e aprovados.'
+            else:
+                status_color = '#dc3545'
+                status_text = 'REPROVADO!'
+                status_icon = '❌'
+                status_msg = ''
+                if not adv['all_tests_present']:
+                    status_msg += f'Nem todos os testes foram realizados! ({adv["total_tests"]} de {adv["expected_tests"]})\n'
+                if not adv['all_tests_ok']:
+                    status_msg += 'Testes reprovados:\n  - ' + '\n  - '.join(adv['failed_tests']) + '\n'
+        else:
+            status_color = '#ffc107'
+            status_text = 'ERRO'
+            status_icon = '⚠️'
+            status_msg = 'Não foi possível realizar validações avançadas.'
+        # Caixa de status
+        status_frame = tk.Frame(panel, bg=status_color, bd=0, relief=tk.RIDGE)
+        status_frame.pack(fill=tk.X, pady=(0, 30), ipadx=10, ipady=10)
+        tk.Label(status_frame, text=f'{status_icon} {status_text}', font=('Segoe UI', 28, 'bold'), bg=status_color, fg='white').pack(pady=(10, 0))
+        tk.Label(status_frame, text=status_msg, font=('Segoe UI', 15), bg=status_color, fg='white', justify='center').pack(pady=(0, 10))
+        # Detalhes
+        if adv:
+            details_frame = ttk.Frame(panel, padding=20)
+            details_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+            # Número de série
+            serial_ok = adv['serial_match']
+            serial_icon = '✅' if serial_ok else '❌'
+            serial_color = '#28a745' if serial_ok else '#dc3545'
+            serial_label = tk.Label(details_frame, text=f'{serial_icon} Número de série: {adv["serial_info"]}', font=('Segoe UI', 13, 'bold'), fg='white', bg=serial_color, anchor='w')
+            serial_label.pack(fill=tk.X, pady=6)
+            # Data calibração
+            calib_ok = adv['calibration_valid']
+            calib_icon = '✅' if calib_ok else '❌'
+            calib_color = '#28a745' if calib_ok else '#dc3545'
+            calib_label = tk.Label(details_frame, text=f'{calib_icon} {adv["calibration_info"]}', font=('Segoe UI', 13, 'bold'), fg='white', bg=calib_color, anchor='w')
+            calib_label.pack(fill=tk.X, pady=6)
+            # Testes de alarme
+            if adv['missing_alarm_ok']:
+                alarm_label = tk.Label(details_frame, text=f'⚠️ Testes de alarme sem confirmação "Teste OK!!": {", ".join(adv["missing_alarm_ok"])}', font=('Segoe UI', 13), fg='#856404', bg='#fff3cd', anchor='w')
+                alarm_label.pack(fill=tk.X, pady=6)
+        # Botão para salvar relatório
+        self.save_report_btn = ttk.Button(panel, text="Salvar Relatório", command=self.save_report, style='Accent.TButton')
+        self.save_report_btn.pack(pady=(30, 10))
         
     def save_report(self):
         if not self.current_pdf_path:
