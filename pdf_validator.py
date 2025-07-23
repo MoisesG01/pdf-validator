@@ -349,7 +349,8 @@ class PDFValidator:
             'total_tests': 0,
             'expected_tests': 0,
             'all_tests_present': True,
-            'not_performed_tests': []  # <-- NOVO
+            'not_performed_tests': [],  # <-- NOVO
+            'attention_tests': []  # <-- NOVO
         }
         # 1. Testes OK/NOK
         test_blocks = re.findall(r'(Teste (\d+) de (\d+)[\s\S]+?)(?=Teste \d+ de \d+|$)', pdf_text)
@@ -367,6 +368,20 @@ class PDFValidator:
                 for param in nok_match:
                     results['all_tests_ok'] = False
                     results['failed_tests'].append(f"{test_id}: {param.strip()}")
+                # NOVO: Verifica se algum valor min/max está fora do limite, mas o teste está OK
+                param_match = re.match(
+                    r'([\w\s]+)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)\s+OK',
+                    line
+                )
+                if param_match:
+                    param_name = param_match.group(1).strip()
+                    min_val = float(param_match.group(2).replace(',', '.'))
+                    max_val = float(param_match.group(3).replace(',', '.'))
+                    media_val = float(param_match.group(4).replace(',', '.'))
+                    lim_min = float(param_match.group(5).replace(',', '.'))
+                    lim_max = float(param_match.group(6).replace(',', '.'))
+                    if min_val < lim_min or max_val > lim_max:
+                        results['attention_tests'].append(f"{test_id}: {param_name} (Min: {min_val}, Max: {max_val}, Média aprovada: {media_val}, Limites: {lim_min}-{lim_max})")
             # NOVO: Verifica se o teste não foi realizado
             if 'Teste não realizado' in block:
                 results['not_performed_tests'].append(test_id)
@@ -503,6 +518,12 @@ class PDFValidator:
                     status_msg += 'Testes não realizados:\n  - ' + '\n  - '.join(adv['not_performed_tests']) + '\n'
                 if not adv['all_tests_ok']:
                     status_msg += 'Testes reprovados:\n  - ' + '\n  - '.join(adv['failed_tests']) + '\n'
+            # Campo de atenção: se aprovado, mostrar só observação geral
+            if adv.get('attention_tests'):
+                if status_color == '#28a745':
+                    status_msg += 'Atenção:\nExistem parâmetros com Min/Max fora dos limites, mas aprovados pela média.\nVeja detalhes abaixo.\n'
+                else:
+                    status_msg += 'Atenção: Parâmetros com Min/Max fora dos limites, mas aprovados pela média:\n  - ' + '\n  - '.join(adv['attention_tests']) + '\n'
         else:
             status_color = '#ffc107'
             status_text = 'ERRO'
@@ -533,6 +554,18 @@ class PDFValidator:
             if adv['missing_alarm_ok']:
                 alarm_label = tk.Label(details_frame, text=f'⚠️ Testes de alarme sem confirmação "Teste OK!!": {", ".join(adv["missing_alarm_ok"])}', font=('Segoe UI', 13), fg='#856404', bg='#fff3cd', anchor='w')
                 alarm_label.pack(fill=tk.X, pady=6)
+            # Parâmetros com atenção
+            if adv['attention_tests']:
+                attention_label = tk.Label(
+                    details_frame,
+                    text=f'⚠️ Atenção: Parâmetros com Min/Max fora dos limites, mas aprovados pela média:\n  - ' + '\n  - '.join(adv['attention_tests']),
+                    font=('Segoe UI', 13),
+                    fg='#856404',
+                    bg='#fff3cd',
+                    anchor='w',
+                    justify='left'
+                )
+                attention_label.pack(fill=tk.X, pady=6)
         # Botão para salvar relatório
         self.save_report_btn = ttk.Button(panel, text="Salvar Relatório", command=self.save_report, style='Accent.TButton')
         self.save_report_btn.pack(pady=(30, 10))
