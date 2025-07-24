@@ -6,6 +6,8 @@ import json
 from datetime import datetime
 import threading
 import re
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
 class PDFValidator:
     def __init__(self, root):
@@ -245,6 +247,7 @@ class PDFValidator:
                 content = self.extract_content(pdf_reader)
                 # Extrair texto completo para validações avançadas
                 full_text = "\n".join(content)
+                self.header_info = self.extract_header_info(full_text)
                 adv_results = self.perform_advanced_validations(full_text, os.path.basename(self.current_pdf_path))
                 self.advanced_results = adv_results
                 
@@ -336,6 +339,25 @@ class PDFValidator:
                 content.append(f"--- PÁGINA {i+1} ---\n[Conteúdo não pode ser extraído]\n")
                 
         return content
+        
+    def extract_header_info(self, pdf_text):
+        info = {}
+        m = re.search(r'Equipamento de Teste Nome\s*:\s*(.*)', pdf_text)
+        if m:
+            info['equipamento_teste'] = m.group(1).strip()
+        m = re.search(r'Nr\. Serie\s*:\s*(\d+)', pdf_text)
+        if m:
+            info['nr_serie_teste'] = m.group(1).strip()
+        m = re.search(r'Equipamento Testado Nome\s*:\s*(.*)', pdf_text)
+        if m:
+            info['equipamento_testado'] = m.group(1).strip()
+        m = re.search(r'Equipamento Testado Nome\s*:\s*.*\nNr\. Serie\s*:\s*(\d+)', pdf_text)
+        if m:
+            info['nr_serie_testado'] = m.group(1).strip()
+        m = re.search(r'Data Calibra[çc][aã]o\s*:\s*(\d{2}/\d{2}/\d{4})', pdf_text)
+        if m:
+            info['data_calibracao'] = m.group(1).strip()
+        return info
         
     def perform_advanced_validations(self, pdf_text, filename):
         results = {
@@ -548,7 +570,15 @@ class PDFValidator:
             calib_ok = adv['calibration_valid']
             calib_icon = '✅' if calib_ok else '❌'
             calib_color = '#28a745' if calib_ok else '#dc3545'
-            calib_label = tk.Label(details_frame, text=f'{calib_icon} {adv["calibration_info"]}', font=('Segoe UI', 13, 'bold'), fg='white', bg=calib_color, anchor='w')
+            calib_info = adv["calibration_info"]
+            # Remover prefixos duplicados
+            if calib_info.startswith("Data calibração: "):
+                calib_info = calib_info.replace("Data calibração: ", "")
+            elif calib_info.startswith("Data calibração inválida: "):
+                calib_info = calib_info.replace("Data calibração inválida: ", "Inválida: ")
+            elif calib_info == "Data calibração não encontrada":
+                calib_info = "Não encontrada"
+            calib_label = tk.Label(details_frame, text=f'{calib_icon} Data calibração Ventmeter: {calib_info}', font=('Segoe UI', 13, 'bold'), fg='white', bg=calib_color, anchor='w')
             calib_label.pack(fill=tk.X, pady=6)
             # Testes de alarme
             if adv['missing_alarm_ok']:
@@ -578,17 +608,160 @@ class PDFValidator:
         file_path = filedialog.asksaveasfilename(
             title="Salvar relatório",
             defaultextension=".txt",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+            filetypes=[("Text files", "*.txt"), ("PDF files", "*.pdf"), ("All files", "*.*")]
         )
         
         if file_path:
             try:
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(self.report_text.get(1.0, tk.END))
+                if file_path.lower().endswith('.pdf'):
+                    self.save_report_as_pdf(file_path)
+                else:
+                    report_text = self.generate_report_text()
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(report_text)
                 messagebox.showinfo("Sucesso", f"Relatório salvo em: {file_path}")
             except Exception as e:
                 messagebox.showerror("Erro", f"Erro ao salvar relatório: {str(e)}")
-                
+
+    def save_report_as_pdf(self, file_path):
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.enums import TA_CENTER
+        from reportlab.lib.units import mm
+        report_text = self.generate_report_text()
+        header = getattr(self, 'header_info', {})
+        adv = getattr(self, 'advanced_results', None)
+        info = self.pdf_info
+        # Montar o PDF
+        doc = SimpleDocTemplate(file_path, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=20)
+        styles = getSampleStyleSheet()
+        elements = []
+        # Título
+        title_style = styles['Title']
+        title_style.alignment = TA_CENTER
+        elements.append(Paragraph("RELATÓRIO DE VALIDAÇÃO", title_style))
+        elements.append(Spacer(1, 8))
+        # Cabeçalho
+        header_data = []
+        if header:
+            header_data = [
+                ["<b>Equipamento de Teste</b>", header.get('equipamento_teste', '')],
+                ["<b>Nº Série Equipamento de Teste</b>", header.get('nr_serie_teste', '')],
+                ["<b>Equipamento Testado</b>", header.get('equipamento_testado', '')],
+                ["<b>Nº Série Equipamento Testado</b>", header.get('nr_serie_testado', '')],
+                ["<b>Data Calibração</b>", header.get('data_calibracao', '')],
+            ]
+            t = Table(header_data, hAlign='LEFT', colWidths=[70*mm, 90*mm])
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+                ('TEXTCOLOR', (0,0), (-1,-1), colors.black),
+                ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+                ('FONTSIZE', (0,0), (-1,-1), 11),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+                ('TOPPADDING', (0,0), (-1,-1), 3),
+                ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.whitesmoke, colors.lightgrey]),
+                ('LINEBELOW', (0,-1), (-1,-1), 1, colors.grey),
+            ]))
+            elements.append(t)
+            elements.append(Spacer(1, 10))
+        # Info do arquivo
+        if info:
+            file_data = [
+                ["<b>Arquivo</b>", info.get('filename', '')],
+                ["<b>Tamanho</b>", f"{info.get('file_size', 0)/1024/1024:.2f} MB"],
+                ["<b>Páginas</b>", info.get('pages', 0)],
+                ["<b>Data de análise</b>", info.get('creation_date', '')],
+            ]
+            t2 = Table(file_data, hAlign='LEFT', colWidths=[70*mm, 90*mm])
+            t2.setStyle(TableStyle([
+                ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+                ('FONTSIZE', (0,0), (-1,-1), 10),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                ('TOPPADDING', (0,0), (-1,-1), 2),
+                ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.whitesmoke, colors.lightgrey]),
+            ]))
+            elements.append(t2)
+            elements.append(Spacer(1, 10))
+        # Status
+        if adv:
+            aprovado = adv['all_tests_present'] and adv['all_tests_ok'] and not adv['missing_alarm_ok'] and not adv['not_performed_tests']
+            status = "APROVADO" if aprovado else "REPROVADO"
+            status_color = colors.green if aprovado else colors.red
+            status_style = styles['Heading2']
+            elements.append(Spacer(1, 8))
+            elements.append(Paragraph(f'<b>Status:</b> <font color="{status_color.hexval()}">{status}</font>', status_style))
+            elements.append(Spacer(1, 8))
+            # Testes não realizados
+            if adv.get('not_performed_tests'):
+                elements.append(Paragraph('<b>Testes não realizados:</b>', styles['Normal']))
+                for t in adv['not_performed_tests']:
+                    elements.append(Paragraph(f"- {t}", styles['Normal']))
+                elements.append(Spacer(1, 4))
+            # Testes reprovados
+            if not adv['all_tests_ok']:
+                elements.append(Paragraph('<b>Testes reprovados:</b>', styles['Normal']))
+                for t in adv['failed_tests']:
+                    elements.append(Paragraph(f"- {t}", styles['Normal']))
+                elements.append(Spacer(1, 4))
+            # Atenção
+            if adv.get('attention_tests'):
+                elements.append(Paragraph('<b>Atenção: Parâmetros com Min/Max fora dos limites, mas aprovados pela média:</b>', styles['Normal']))
+                for t in adv['attention_tests']:
+                    elements.append(Paragraph(f"- {t}", styles['Normal']))
+                elements.append(Spacer(1, 4))
+            # Número de série
+            elements.append(Paragraph(f'<b>Número de série:</b> {adv.get("serial_info", "")}', styles['Normal']))
+            # Data calibração
+            elements.append(Paragraph(f'<b>Data calibração:</b> {adv.get("calibration_info", "")}', styles['Normal']))
+            # Alarmes
+            if adv.get('missing_alarm_ok'):
+                elements.append(Paragraph('<b>Testes de alarme sem confirmação "Teste OK!!":</b>', styles['Normal']))
+                for t in adv['missing_alarm_ok']:
+                    elements.append(Paragraph(f"- {t}", styles['Normal']))
+        doc.build(elements)
+        
+    def generate_report_text(self):
+        adv = getattr(self, 'advanced_results', None)
+        info = self.pdf_info
+        header = getattr(self, 'header_info', {})
+        lines = []
+        lines.append(f"RELATÓRIO DE VALIDAÇÃO\n{'='*50}\n")
+        if header:
+            lines.append(f"Equipamento de Teste: {header.get('equipamento_teste', '')}")
+            lines.append(f"Nº Série Equipamento de Teste: {header.get('nr_serie_teste', '')}")
+            lines.append(f"Equipamento Testado: {header.get('equipamento_testado', '')}")
+            lines.append(f"Nº Série Equipamento Testado: {header.get('nr_serie_testado', '')}")
+            lines.append(f"Data Calibração: {header.get('data_calibracao', '')}")
+            lines.append('')
+        if info:
+            lines.append(f"Arquivo: {info.get('filename', '')}")
+            lines.append(f"Tamanho: {info.get('file_size', 0)/1024/1024:.2f} MB")
+            lines.append(f"Páginas: {info.get('pages', 0)}")
+            lines.append(f"Data de análise: {info.get('creation_date', '')}\n")
+        if adv:
+            aprovado = adv['all_tests_present'] and adv['all_tests_ok'] and not adv['missing_alarm_ok'] and not adv['not_performed_tests']
+            lines.append(f"Status: {'APROVADO' if aprovado else 'REPROVADO'}\n")
+            if adv.get('not_performed_tests'):
+                lines.append('Testes não realizados:')
+                for t in adv['not_performed_tests']:
+                    lines.append(f"  - {t}")
+            if not adv['all_tests_ok']:
+                lines.append('Testes reprovados:')
+                for t in adv['failed_tests']:
+                    lines.append(f"  - {t}")
+            if adv.get('attention_tests'):
+                lines.append('Atenção: Parâmetros com Min/Max fora dos limites, mas aprovados pela média:')
+                for t in adv['attention_tests']:
+                    lines.append(f"  - {t}")
+            lines.append(f"Número de série: {adv.get('serial_info', '')}")
+            lines.append(f"Data calibração: {adv.get('calibration_info', '')}")
+            if adv.get('missing_alarm_ok'):
+                lines.append('Testes de alarme sem confirmação "Teste OK!!":')
+                for t in adv['missing_alarm_ok']:
+                    lines.append(f"  - {t}")
+        return '\n'.join(lines)
+        
     def show_error(self, message):
         # Parar barra de progresso
         self.progress_bar.stop()
