@@ -4,16 +4,23 @@ echo    Gerando Executavel - Validador PDF
 echo ========================================
 echo.
 
-echo 1. Instalando dependencias...
-py -m pip install -r requirements.txt
-py -m pip install pyinstaller
+REM 1. Cria e ativa ambiente virtual
+if not exist .venv (
+    py -m venv .venv
+)
+call .venv\Scripts\activate
+
+echo 2. Instalando dependencias...
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install pyinstaller
 
 echo.
-echo 2. Gerando executavel...
+echo 3. Gerando executavel...
 py -m PyInstaller pdf_validator.spec
 
 echo.
-echo 3. Verificando resultado...
+echo 4. Verificando resultado...
 if exist "dist\Validador_PDF.exe" (
     echo ✅ Executavel criado com sucesso!
     echo 📁 Local: dist\Validador_PDF.exe
