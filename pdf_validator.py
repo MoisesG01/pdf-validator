@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 import PyPDF2
-import pdfplumber
 import os
 import json
 from datetime import datetime
@@ -244,8 +243,8 @@ class PDFValidator:
                 # Realizar validações
                 self.validation_results = self.perform_validations(pdf_reader)
                 
-                # Extrair conteúdo usando pdfplumber
-                content = self.extract_content(self.current_pdf_path)
+                # Extrair conteúdo
+                content = self.extract_content(pdf_reader)
                 # Extrair texto completo para validações avançadas
                 full_text = "\n".join(content)
                 self.header_info = self.extract_header_info(full_text)
@@ -328,18 +327,17 @@ class PDFValidator:
             
         return results
         
-    def extract_content(self, pdf_path):
+    def extract_content(self, pdf_reader):
         content = []
-        with pdfplumber.open(pdf_path) as pdf:
-            for i, page in enumerate(pdf.pages):
-                try:
-                    text = page.extract_text()
-                    if text and text.strip():
-                        content.append(f"--- PÁGINA {i+1} ---\n{text}\n")
-                    else:
-                        content.append(f"--- PÁGINA {i+1} ---\n[Conteúdo não pode ser extraído]\n")
-                except Exception as e:
-                    content.append(f"--- PÁGINA {i+1} ---\n[Erro ao extrair: {str(e)}]\n")
+        
+        for i, page in enumerate(pdf_reader.pages):
+            try:
+                text = page.extract_text()
+                if text.strip():
+                    content.append(f"--- PÁGINA {i+1} ---\n{text}\n")
+            except:
+                content.append(f"--- PÁGINA {i+1} ---\n[Conteúdo não pode ser extraído]\n")
+                
         return content
         
     def extract_header_info(self, pdf_text):
@@ -374,17 +372,13 @@ class PDFValidator:
             'expected_tests': 0,
             'all_tests_present': True,
             'not_performed_tests': [],  # <-- NOVO
-            'attention_tests': [],      # <-- NOVO
-            'annotation_requests': [],  # <-- NOVO
-            'missing_annotation': [],    # <-- NOVO
-            'annotation_results': []     # <-- NOVO
+            'attention_tests': []  # <-- NOVO
         }
         # 1. Testes OK/NOK
         test_blocks = re.findall(r'(Teste (\d+) de (\d+)[\s\S]+?)(?=Teste \d+ de \d+|$)', pdf_text)
         test_numbers = set()
         expected_tests = 0
-
-        for idx, (block, test_num, test_total) in enumerate(test_blocks):
+        for block, test_num, test_total in test_blocks:
             test_id = f"{test_num} de {test_total}"
             test_numbers.add(int(test_num))
             expected_tests = int(test_total)
@@ -413,113 +407,6 @@ class PDFValidator:
             # NOVO: Verifica se o teste não foi realizado
             if 'Teste não realizado' in block:
                 results['not_performed_tests'].append(test_id)
-            # --- ANOTAÇÃO REFINADA ---
-            # Procura por solicitações de anotação
-            annotation_requests = re.findall(r'anotar\s+([^.\n]+)', block, re.IGNORECASE)
-            
-            for request in annotation_requests:
-                request_clean = request.strip()
-                annotated_values = []
-                
-                # Busca mais específica - apenas em seções OBS e próximas à solicitação
-                search_context = ""
-                
-                # 1. Primeiro, procura em seções OBS específicas
-                obs_sections = re.findall(r'OBS:\s*(.*?)(?=\n[A-Z]|\nTeste|\n\n|$)', block, re.DOTALL | re.IGNORECASE)
-                for obs_section in obs_sections:
-                    search_context += obs_section + " "
-                
-                # 2. Se não encontrou nada nas OBS, procura no contexto próximo à palavra "anotar"
-                if not search_context.strip():
-                    # Encontra a posição da palavra "anotar" e pega algumas linhas antes e depois
-                    lines = block.split('\n')
-                    for i, line in enumerate(lines):
-                        if 'anotar' in line.lower():
-                            # Pega 2 linhas antes e 3 linhas depois
-                            start = max(0, i-2)
-                            end = min(len(lines), i+4)
-                            context_lines = lines[start:end]
-                            search_context = " ".join(context_lines)
-                            break
-                
-                # 3. Se ainda não tem contexto, usa todo o bloco mas com filtros mais rigorosos
-                if not search_context.strip():
-                    search_context = block
-                
-                # Busca por padrões específicos apenas no contexto selecionado
-                
-                # 1. Procura por concentração (apenas em contexto de anotação)
-                conc_patterns = [
-                    r'Concentração\s*[:=]?\s*([0-9]+[.,]?[0-9]*)\s*%',
-                    r'Conc\s*[:=]?\s*([0-9]+[.,]?[0-9]*)\s*%',
-                    r'([0-9]+[.,]?[0-9]*)\s*%\s*O2',
-                    r'O2\s*[:=]?\s*([0-9]+[.,]?[0-9]*)\s*%'
-                ]
-                
-                for pattern in conc_patterns:
-                    matches = re.findall(pattern, search_context, re.IGNORECASE)
-                    if matches:
-                        for match in matches:
-                            # Verifica se não é um valor de parâmetro de tabela
-                            if not self._is_parameter_table_value(match, block):
-                                annotated_values.append(f"Concentração {match}%")
-                        if annotated_values:
-                            break
-                
-                # 2. Procura por complacência dinâmica
-                if not annotated_values:
-                    comp_dyn_patterns = [
-                        r'Complacência\s+Din\.?\s*[:=]?\s*([0-9]+[.,]?[0-9]*)\s*mL/cmH2O',
-                        r'Din\.?\s*[:=]?\s*([0-9]+[.,]?[0-9]*)\s*mL/cmH2O',
-                        r'Dinâmica\s*[:=]?\s*([0-9]+[.,]?[0-9]*)\s*mL/cmH2O'
-                    ]
-                    
-                    for pattern in comp_dyn_patterns:
-                        matches = re.findall(pattern, search_context, re.IGNORECASE)
-                        if matches:
-                            for match in matches:
-                                if not self._is_parameter_table_value(match, block):
-                                    annotated_values.append(f"Complacência Din. {match}mL/cmH2O")
-                            if annotated_values:
-                                break
-                
-                # 3. Procura por complacência estática
-                if not annotated_values:
-                    comp_est_patterns = [
-                        r'Estática\s*[:=]?\s*([0-9]+[.,]?[0-9]*)\s*mL/cmH2O',
-                        r'Est\.?\s*[:=]?\s*([0-9]+[.,]?[0-9]*)\s*mL/cmH2O',
-                        r'Complacência\s+Est\.?\s*[:=]?\s*([0-9]+[.,]?[0-9]*)\s*mL/cmH2O'
-                    ]
-                    
-                    for pattern in comp_est_patterns:
-                        matches = re.findall(pattern, search_context, re.IGNORECASE)
-                        if matches:
-                            for match in matches:
-                                if not self._is_parameter_table_value(match, block):
-                                    annotated_values.append(f"Estática {match}mL/cmH2O")
-                            if annotated_values:
-                                break
-                
-                # 4. Procura por outros valores numéricos próximos à solicitação
-                if not annotated_values:
-                    # Procura por números próximos à palavra "anotar"
-                    context_pattern = r'anotar[^0-9]*([0-9]+[.,]?[0-9]*)'
-                    context_matches = re.findall(context_pattern, search_context, re.IGNORECASE)
-                    if context_matches:
-                        for match in context_matches:
-                            if not self._is_parameter_table_value(match, block):
-                                annotated_values.append(f"Valor {match}")
-                
-                # Monta o resultado
-                if annotated_values:
-                    valor_anotado = " | ".join(annotated_values)
-                else:
-                    valor_anotado = "NÃO ANOTADO"
-                    results['missing_annotation'].append(f"{test_id}: {request_clean}")
-                
-                results['annotation_results'].append(f"{test_id}: {request_clean} -> {valor_anotado}")
-            
-            # --- FIM ANOTAÇÃO REFINADA ---
             # Verifica se é teste de alarme e se tem 'Teste OK!!' ou 'NOK' (case-insensitive)
             if 'OBS:' in block:
                 obs_block = block.split('OBS:')[1] if 'OBS:' in block else ''
@@ -564,21 +451,6 @@ class PDFValidator:
         results['calibration_valid'] = calib_ok
         results['calibration_info'] = calib_info
         return results
-    
-    def _is_parameter_table_value(self, value, block):
-        """
-        Verifica se um valor encontrado é de uma tabela de parâmetros
-        """
-        # Procura por linhas que seguem o padrão de tabela de parâmetros
-        # (muitos números separados por espaços + OK no final)
-        lines = block.split('\n')
-        for line in lines:
-            # Padrão de tabela de parâmetros: texto + 5 números + OK
-            if re.match(r'^\s*[\w\s]+\s+[\d\.,]+\s+[\d\.,]+\s+[\d\.,]+\s+[\d\.,]+\s+[\d\.,]+\s+OK', line):
-                # Verifica se o valor está nesta linha
-                if value in line:
-                    return True
-        return False
         
     def update_ui_with_results(self, content):
         # Parar barra de progresso
@@ -724,30 +596,6 @@ class PDFValidator:
                     justify='left'
                 )
                 attention_label.pack(fill=tk.X, pady=6)
-            # Testes de anotação ausente
-            if adv.get('missing_annotation'):
-                missing_annot_label = tk.Label(
-                    details_frame,
-                    text=f'⚠️ Testes que solicitaram anotação mas não foi encontrado valor anotado:\n  - ' + '\n  - '.join(adv['missing_annotation']),
-                    font=('Segoe UI', 13),
-                    fg='#856404',
-                    bg='#fff3cd',
-                    anchor='w',
-                    justify='left'
-                )
-                missing_annot_label.pack(fill=tk.X, pady=6)
-            # Listagem de anotações
-            if adv.get('annotation_results'):
-                annotation_label = tk.Label(
-                    details_frame,
-                    text=f'📝 Testes que solicitaram anotação e valor encontrado:\n  - ' + '\n  - '.join(adv['annotation_results']),
-                    font=('Segoe UI', 13),
-                    fg='#005fa3',
-                    bg='#e9ecef',
-                    anchor='w',
-                    justify='left'
-                )
-                annotation_label.pack(fill=tk.X, pady=6)
         # Botão para salvar relatório
         self.save_report_btn = ttk.Button(panel, text="Salvar Relatório", command=self.save_report, style='Accent.TButton')
         self.save_report_btn.pack(pady=(30, 10))
@@ -871,17 +719,6 @@ class PDFValidator:
                 elements.append(Paragraph('<b>Testes de alarme sem confirmação "Teste OK!!":</b>', styles['Normal']))
                 for t in adv['missing_alarm_ok']:
                     elements.append(Paragraph(f"- {t}", styles['Normal']))
-            # Testes de anotação ausente
-            if adv.get('missing_annotation'):
-                elements.append(Paragraph('<b>Testes que solicitaram anotação mas não foi encontrado valor anotado:</b>', styles['Normal']))
-                for t in adv['missing_annotation']:
-                    elements.append(Paragraph(f"- {t}", styles['Normal']))
-            # Listagem de anotações
-            if adv.get('annotation_results'):
-                elements.append(Paragraph('<b>Testes que solicitaram anotação e valor encontrado:</b>', styles['Normal']))
-                for t in adv['annotation_results']:
-                    elements.append(Paragraph(f"- {t}", styles['Normal']))
-                elements.append(Spacer(1, 4))
         doc.build(elements)
         
     def generate_report_text(self):
@@ -922,14 +759,6 @@ class PDFValidator:
             if adv.get('missing_alarm_ok'):
                 lines.append('Testes de alarme sem confirmação "Teste OK!!":')
                 for t in adv['missing_alarm_ok']:
-                    lines.append(f"  - {t}")
-            if adv.get('missing_annotation'):
-                lines.append('Testes que solicitaram anotação mas não foi encontrado valor anotado:')
-                for t in adv['missing_annotation']:
-                    lines.append(f"  - {t}")
-            if adv.get('annotation_results'):
-                lines.append('Testes que solicitaram anotação e valor encontrado:')
-                for t in adv['annotation_results']:
                     lines.append(f"  - {t}")
         return '\n'.join(lines)
         
